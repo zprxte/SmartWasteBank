@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from "react-router";
-import { LayoutDashboard, Users, Recycle, Gift, BarChart3, Settings, Leaf, LogOut } from "lucide-react";
+import { LayoutDashboard, Users, Recycle, Gift, BarChart3, Pencil, Leaf, LogOut } from "lucide-react";
 import { useEffect } from "react";
 
 export function AdminLayout() {
@@ -28,7 +28,7 @@ export function AdminLayout() {
     { to: "/admin/submissions", icon: Recycle, label: "Submissions" },
     { to: "/admin/rewards", icon: Gift, label: "Rewards" },
     { to: "/admin/analytics", icon: BarChart3, label: "Analytics" },
-    { to: "/admin/settings", icon: Settings, label: "Settings" },
+    { to: "/admin/settings", icon: Pencil, label: "Edit Reward" },
   ];
 
   return (
