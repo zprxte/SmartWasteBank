@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router";
 import {
   Coins,
@@ -8,39 +9,121 @@ import {
   Zap,
   Trophy,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  Loader2
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useUser } from "../context/UserContext";
+import { supabase } from "../../lib/supabaseClient";
+import { getPointsForLevel } from "../../lib/levelUtils";
 
-// Mock data
-const pointsData = [
-  { month: "Jan", points: 240 },
-  { month: "Feb", points: 380 },
-  { month: "Mar", points: 520 },
-  { month: "Apr", points: 680 },
-  { month: "May", points: 850 },
-  { month: "Jun", points: 1250 },
-];
+interface ChartData {
+  month: string;
+  points: number;
+}
 
-const badges = [
-  { id: 1, name: "First Step", icon: "🌱", description: "First waste submission", unlocked: true },
-  { id: 2, name: "Eco Warrior", icon: "⚔️", description: "10 submissions", unlocked: true },
-  { id: 3, name: "Green Champion", icon: "🏆", description: "50 submissions", unlocked: true },
-  { id: 4, name: "Planet Saver", icon: "🌍", description: "100 submissions", unlocked: false },
-];
-
-const recentActivity = [
-  { id: 1, type: "Plastic Bottles", weight: "2.5 kg", points: 125, date: "2 hours ago" },
-  { id: 2, type: "Paper/Cardboard", weight: "5.0 kg", points: 200, date: "1 day ago" },
-  { id: 3, type: "Metal Cans", weight: "1.2 kg", points: 80, date: "2 days ago" },
-];
+interface RecentActivity {
+  id: string;
+  type: string;
+  items: string;
+  points: number;
+  date: string;
+}
 
 export function Dashboard() {
-  const { points: userPoints, level: userLevel, submissions: totalSubmissions, totalWeight } = useUser();
-  const nextLevelPoints = (userLevel) * 500;
+  const { id: userId, points: userPoints, level: userLevel, submissions: totalSubmissions, items, totalEarned } = useUser();
+  const [userName, setUserName] = useState("User");
+  const [isLoading, setIsLoading] = useState(true);
+  const [pointsData, setPointsData] = useState<ChartData[]>([
+    { month: "Jan", points: 0 }, { month: "Feb", points: 0 }, { month: "Mar", points: 0 },
+    { month: "Apr", points: 0 }, { month: "May", points: 0 }, { month: "Jun", points: 0 }
+  ]);
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
 
-  const levelProgress = ((userPoints % 500) / 500) * 100;
+  // Dynamically compute badges based on real user stats
+  const badges = [
+    { id: 1, name: "First Step", icon: "🌱", description: "First waste submission", unlocked: totalSubmissions >= 1 },
+    { id: 2, name: "Eco Warrior", icon: "⚔️", description: "10 submissions", unlocked: totalSubmissions >= 10 },
+    { id: 3, name: "Green Champion", icon: "🏆", description: "50 submissions", unlocked: totalSubmissions >= 50 },
+    { id: 4, name: "Planet Saver", icon: "🌍", description: "100 submissions", unlocked: totalSubmissions >= 100 },
+  ];
+
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      if (!userId) return;
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const meta = user.user_metadata || {};
+        const name = meta.first_name || meta.username || "User";
+        setUserName(name);
+      }
+
+      // Fetch recent submissions
+      const { data } = await supabase
+        .from('waste_submissions')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      const submissionsData: any[] = data || [];
+
+      if (submissionsData.length > 0) {
+        // Format recent activity
+        const recent = submissionsData.slice(0, 5).map(sub => {
+          const d = new Date(sub.created_at);
+          return {
+            id: sub.id,
+            type: sub.waste_type,
+            items: `${sub.items} items`,
+            points: sub.points_earned,
+            date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+          };
+        });
+        setRecentActivity(recent);
+
+        // Group points by month for chart
+        const monthlyPoints: Record<string, number> = {};
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        
+        submissionsData.forEach(sub => {
+          const d = new Date(sub.created_at);
+          const m = months[d.getMonth()];
+          monthlyPoints[m] = (monthlyPoints[m] || 0) + sub.points_earned;
+        });
+
+        // Ensure we show at least the last 6 months including current
+        const currentMonthIndex = new Date().getMonth();
+        const newChartData: ChartData[] = [];
+        for (let i = 5; i >= 0; i--) {
+          let idx = currentMonthIndex - i;
+          if (idx < 0) idx += 12;
+          const monthName = months[idx];
+          newChartData.push({
+            month: monthName,
+            points: monthlyPoints[monthName] || 0
+          });
+        }
+        setPointsData(newChartData);
+      }
+      setIsLoading(false);
+    };
+    fetchDashboardData();
+  }, [userId, userPoints]); // Re-run when points change
+
+  const currentLevelBasePoints = getPointsForLevel(userLevel);
+  const nextLevelPoints = getPointsForLevel(userLevel + 1);
+  const pointsNeededForThisLevel = nextLevelPoints - currentLevelBasePoints;
+  const currentLevelProgressPoints = totalEarned - currentLevelBasePoints;
+  const levelProgress = Math.min(100, Math.max(0, (currentLevelProgressPoints / pointsNeededForThisLevel) * 100));
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-20 md:pb-6">
@@ -49,7 +132,7 @@ export function Dashboard() {
         <div className="relative z-10">
           <div className="flex items-start justify-between">
             <div>
-              <h2 className="mb-2">Welcome back, IceKung! 👋</h2>
+              <h2 className="mb-2">Welcome back, {userName}! 👋</h2>
               <p className="text-white/90 max-w-md">
                 You're making a real difference! Keep up the great work protecting our planet.
               </p>
@@ -80,7 +163,7 @@ export function Dashboard() {
           <div className="text-3xl text-card-foreground">{userPoints.toLocaleString()}</div>
           <div className="text-sm text-primary mt-1 flex items-center gap-1">
             <TrendingUp className="w-4 h-4" />
-            +150 this week
+            Your current balance
           </div>
         </div>
 
@@ -91,7 +174,7 @@ export function Dashboard() {
           </div>
           <div className="text-3xl text-card-foreground">Level {userLevel}</div>
           <div className="text-sm text-muted-foreground mt-1">
-            {nextLevelPoints - userPoints} pts to next level
+            {Math.max(0, nextLevelPoints - totalEarned)} pts to next level
           </div>
         </div>
 
@@ -101,15 +184,17 @@ export function Dashboard() {
             <Recycle className="w-5 h-5 text-primary" />
           </div>
           <div className="text-3xl text-card-foreground">{totalSubmissions}</div>
-          <div className="text-sm text-primary mt-1">53 to next badge</div>
+          <div className="text-sm text-primary mt-1 flex items-center gap-1">
+             <Trophy className="w-4 h-4" /> Keep it up!
+          </div>
         </div>
 
         <div className="bg-card rounded-xl p-6 border border-border">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-muted-foreground">This Month</span>
+            <span className="text-muted-foreground">Total Items</span>
             <Target className="w-5 h-5 text-primary" />
           </div>
-          <div className="text-3xl text-card-foreground">{totalWeight.toFixed(1)} kg</div>
+          <div className="text-3xl text-card-foreground">{items} items</div>
           <div className="text-sm text-muted-foreground mt-1">Waste recycled</div>
         </div>
       </div>
@@ -130,7 +215,7 @@ export function Dashboard() {
           />
         </div>
         <div className="flex items-center justify-between mt-2 text-sm">
-          <span className="text-muted-foreground">{userPoints} pts</span>
+          <span className="text-muted-foreground">{totalEarned} pts</span>
           <span className="text-muted-foreground">{nextLevelPoints} pts</span>
         </div>
       </div>
@@ -139,7 +224,7 @@ export function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Points Chart */}
         <div className="bg-card rounded-xl p-6 border border-border">
-          <h3 className="mb-4 text-card-foreground">Points Over Time</h3>
+          <h3 className="mb-4 text-card-foreground">Points Earned Over Time</h3>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={pointsData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e6f4ed" />
@@ -173,11 +258,10 @@ export function Dashboard() {
             {badges.map((badge) => (
               <div
                 key={badge.id}
-                className={`p-4 rounded-lg border transition-all ${
-                  badge.unlocked
+                className={`p-4 rounded-lg border transition-all ${badge.unlocked
                     ? "bg-secondary border-primary/30 shadow-sm"
                     : "bg-muted/50 border-border opacity-50"
-                }`}
+                  }`}
               >
                 <div className="text-3xl mb-2">{badge.icon}</div>
                 <div className="text-sm text-card-foreground">{badge.name}</div>
@@ -192,26 +276,32 @@ export function Dashboard() {
       <div className="bg-card rounded-xl p-6 border border-border">
         <h3 className="mb-4 text-card-foreground">Recent Activity</h3>
         <div className="space-y-3">
-          {recentActivity.map((activity) => (
-            <div
-              key={activity.id}
-              className="flex items-center justify-between p-4 bg-secondary rounded-lg"
-            >
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                  <Recycle className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <div className="text-card-foreground">{activity.type}</div>
-                  <div className="text-sm text-muted-foreground">{activity.weight} • {activity.date}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-1 text-primary">
-                <Coins className="w-4 h-4" />
-                <span>+{activity.points}</span>
-              </div>
+          {recentActivity.length === 0 ? (
+            <div className="p-4 text-center text-muted-foreground bg-secondary rounded-lg">
+              No recent activity. Start submitting waste to earn points!
             </div>
-          ))}
+          ) : (
+            recentActivity.map((activity) => (
+              <div
+                key={activity.id}
+                className="flex items-center justify-between p-4 bg-secondary rounded-lg"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
+                    <Recycle className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <div className="text-card-foreground font-medium">{activity.type}</div>
+                    <div className="text-sm text-muted-foreground">{activity.items} • {activity.date}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 text-primary font-medium">
+                  <Coins className="w-4 h-4" />
+                  <span>+{activity.points}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

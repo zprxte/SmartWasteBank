@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { Leaf } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
 
 export const Register: React.FC = () => {
   const navigate = useNavigate();
@@ -11,17 +12,18 @@ export const Register: React.FC = () => {
     email: '',
     password: '',
     confirmPassword: '',
+    role: 'user' as 'user' | 'admin',
   });
   const [error, setError] = useState('');
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value
     });
   };
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -30,42 +32,48 @@ export const Register: React.FC = () => {
       return;
     }
 
-    const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    const userExists = existingUsers.some((u: any) => u.username === formData.username);
+    try {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+        options: {
+          data: {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            username: formData.username,
+            role: formData.role,
+            points: 0,
+            level: 1,
+            submissions: 0,
+            totalWeight: 0,
+            items: 0,
+          }
+        }
+      });
 
-    if (userExists) {
-      setError('Username already exists');
-      return;
+      if (signUpError) {
+        setError(signUpError.message);
+        return;
+      }
+
+      navigate('/login');
+    } catch (err) {
+      setError('An unexpected error occurred during registration.');
     }
-
-    const newUser = {
-      username: formData.username,
-      password: formData.password,
-      email: formData.email,
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-    };
-
-    existingUsers.push(newUser);
-    localStorage.setItem('users', JSON.stringify(existingUsers));
-    
-    // Auto login after register or just navigate to login
-    navigate('/login');
   };
 
   return (
     <div className="min-h-screen flex w-full">
       {/* Left Side: Register Form */}
       <div className="w-full lg:w-1/2 flex flex-col bg-white dark:bg-gray-900 relative">
-        <div className="absolute top-8 left-8 sm:top-12 sm:left-12 flex items-center gap-2">
-          <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center">
-            <Leaf className="w-6 h-6 text-white" />
-          </div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Smart Waste Bank</h1>
-        </div>
-
         <div className="flex-1 flex flex-col justify-center px-8 sm:px-16 md:px-24 lg:px-32 xl:px-40 mt-20 lg:mt-0">
           <div className="w-full max-w-md mx-auto">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-10 h-10 bg-emerald-600 rounded-full flex items-center justify-center">
+                <Leaf className="w-6 h-6 text-white" />
+              </div>
+              <h1 className="text-xl font-semibold text-gray-900 dark:text-white">Smart Waste Bank</h1>
+            </div>
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-gray-900 dark:text-white tracking-tight">Create an Account</h1>
             </div>
@@ -149,6 +157,19 @@ export const Register: React.FC = () => {
                     className="block w-full px-4 py-2 bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition duration-200"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Role</label>
+                <select
+                  name="role"
+                  value={formData.role}
+                  onChange={handleChange}
+                  className="block w-full px-4 py-2 bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition duration-200"
+                >
+                  <option value="user">User (Regular)</option>
+                  <option value="admin">Admin</option>
+                </select>
               </div>
 
               <div className="pt-4">

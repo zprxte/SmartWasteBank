@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { Leaf } from 'lucide-react';
+import { supabase } from '../../lib/supabaseClient';
 
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: ''
   });
   const [error, setError] = useState('');
@@ -17,28 +18,37 @@ export const Login: React.FC = () => {
     });
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    // --- TEMPORARY FIX FOR TESTING ---
-    // Allow any username and password to log in without checking localStorage
-    sessionStorage.setItem("isAuthenticated", "true");
-    navigate('/');
-    // ---------------------------------
-    
-    /* 
-    // This is the real check, commented out for now:
-    const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    const user = existingUsers.find((u: any) => u.username === formData.username && u.password === formData.password);
+    try {
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email: formData.email,
+        password: formData.password,
+      });
 
-    if (user) {
+      if (signInError) {
+        setError(signInError.message);
+        return;
+      }
+
       sessionStorage.setItem("isAuthenticated", "true");
-      navigate('/');
-    } else {
-      setError('Invalid username or password');
+      if (data.user) {
+        sessionStorage.setItem("user", JSON.stringify(data.user));
+        const role = data.user.user_metadata?.role || 'user';
+        sessionStorage.setItem("userRole", role);
+        if (role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
+      } else {
+        navigate('/');
+      }
+    } catch (err) {
+      setError('An unexpected error occurred during login.');
     }
-    */
   };
 
   return (
@@ -68,11 +78,11 @@ export const Login: React.FC = () => {
 
             <form onSubmit={handleLogin} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Username</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Email address</label>
                 <input
-                  type="text"
-                  name="username"
-                  value={formData.username}
+                  type="email"
+                  name="email"
+                  value={formData.email}
                   onChange={handleChange}
                   required
                   className="block w-full px-4 py-2.5 bg-transparent border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition duration-200"
@@ -98,9 +108,9 @@ export const Login: React.FC = () => {
                     Remember me
                   </label>
                 </div>
-                <a href="#" className="text-sm font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 transition duration-150">
+                <Link to="/forgot-password" className="text-sm font-medium text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 transition duration-150">
                   Forgot password
-                </a>
+                </Link>
               </div>
 
               <div className="pt-2">
