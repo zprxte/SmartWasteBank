@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
-import { Loader2, Gift, Pencil, Trash2, X, Check, Search } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Loader2, Gift, Pencil, Trash2, X, Check, Search, Bell } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
+import { toast } from "sonner";
 
 interface ClaimedRewardRow {
   id: string;
@@ -28,8 +29,65 @@ export function AdminRewards() {
   // Delete confirm
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Notification state
+  const [newClaimCount, setNewClaimCount] = useState(0);
+  const initialLoadDone = useRef(false);
+
   useEffect(() => {
     fetchClaimed();
+
+    // Subscribe to Supabase Realtime for new claimed_rewards
+    const channel = supabase
+      .channel('admin-rewards-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'claimed_rewards' },
+        async (payload: any) => {
+          if (!initialLoadDone.current) return;
+
+          const newReward = payload.new;
+
+          // Try to get user info for the toast
+          let userName = 'A user';
+          if (newReward.user_id) {
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('first_name, last_name, username')
+              .eq('id', newReward.user_id)
+              .single();
+            if (profile) {
+              userName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.username || 'A user';
+            }
+          }
+
+          // Show toast notification
+          toast.success(`🎁 New Reward Claimed!`, {
+            description: `${userName} claimed "${newReward.reward_name}" for ${newReward.points_cost} points`,
+            duration: 8000,
+          });
+
+          // Update badge count
+          setNewClaimCount((prev) => prev + 1);
+
+          // Play notification sound
+          try {
+            const audio = new Audio('data:audio/wav;base64,UklGRl4FAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YToFAABkAGgAbABwAHQAeAB8AIAAhACIAIwAkACUAJgAnACgAKQAqACsALAAtAC4ALwAwADEAMgAzADQANQA0ADQANAA0ADQANAA0ADMANAA0ADMAMgAxADAALwAuACsAKgApACgAJwAmACUAJAAjACIAIQAgAB8AHgAdAB0AHAAcABsAGgAaABkAGQAYABgAGAAXABcAFgAWABUAFQAUABQAFAAUABMAEwATABMAEgASABIAEQARABEAEQAQABAAEAAQABAADwAPAA8ADwAPAA4ADgAOAA4ADgAOAA0ADQANAA0ADQANAA0ADAAMAAwADAAMAAwADAAMAAsACwALAAsACwALAAsACgAKAAoACgAKAAoACgAKAAoACQAJAAkACQAJAAkACQAJAAkACQAIAAgACAAIAAgACAAIAAgACAAIAAgABwAHAAcABwAHAAcABwAHAAcABwAHAAcABgAGAAYABgAGAAYABgAGAAYABgAGAAYABgAFAAUABQAFAAUABQAFAAUABQAFAAUABQAFAAUABQAEAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAQABAAEAAMAAwADAAMAAwADAAMAAwADAAMAAwADAAMAAwADAAMAAwACwALAAsACwALAAsACwALAAsACwALAAsACwALAAsACwALAAsACwAKAAoACgAKAAoACgAKAAoACgAKAAoACgAKAAoACgAKAAoACgAKAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAkACQAJAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAAgACAAIAA==');
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+          } catch (_) {}
+
+          // Refresh the list
+          await fetchClaimed();
+        }
+      )
+      .subscribe();
+
+    // Mark initial load complete after a short delay
+    setTimeout(() => { initialLoadDone.current = true; }, 2000);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchClaimed = async () => {
@@ -105,9 +163,23 @@ export function AdminRewards() {
 
   return (
     <div className="space-y-6 pb-20 md:pb-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Claimed Rewards</h1>
-        <p className="text-muted-foreground">Manage all rewards claimed by users</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Claimed Rewards</h1>
+          <p className="text-muted-foreground">Manage all rewards claimed by users</p>
+        </div>
+        <button
+          onClick={() => setNewClaimCount(0)}
+          className="relative p-3 rounded-xl bg-card border border-border hover:bg-secondary transition-colors"
+          title="Notifications"
+        >
+          <Bell className="w-5 h-5 text-card-foreground" />
+          {newClaimCount > 0 && (
+            <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center animate-pulse">
+              {newClaimCount > 9 ? '9+' : newClaimCount}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Search */}
