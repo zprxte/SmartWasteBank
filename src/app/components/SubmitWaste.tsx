@@ -29,10 +29,11 @@ export function SubmitWaste() {
   const [verifying, setVerifying] = useState(false);
   const [verificationResult, setVerificationResult] = useState<VerificationResult | null>(null);
 
-  const handleItemCountChange = (value: string) => {
+  const handleItemCountChange = (value: string, typeOverride?: string) => {
     setItemCount(value);
-    if (selectedType && value) {
-      const type = wasteTypes.find((t) => t.id === selectedType);
+    const currentType = typeOverride || selectedType;
+    if (currentType && value) {
+      const type = wasteTypes.find((t) => t.id === currentType);
       if (type) {
         setCalculatedPoints(Math.floor(parseInt(value) * type.pointsPerItem));
       }
@@ -170,9 +171,15 @@ export function SubmitWaste() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Only block if verification was attempted and explicitly failed
-    if (verificationResult && !verificationResult.isWaste) {
-      alert("The image verification detected this is not waste. Please check your submission.");
+    // Block if image is uploaded but verification not done yet
+    if (image && !verificationResult) {
+      alert("Please verify your image with AI before submitting.");
+      return;
+    }
+
+    // Block if verification failed
+    if (verificationResult && (!verificationResult.isWaste || !verificationResult.correctType)) {
+      alert("AI verification did not pass. Please check your image, waste type, and quantity.");
       return;
     }
 
@@ -253,7 +260,7 @@ export function SubmitWaste() {
                 type="button"
                 onClick={() => {
                   setSelectedType(type.id);
-                  handleItemCountChange(itemCount);
+                  handleItemCountChange(itemCount, type.id);
                 }}
                 className={`p-4 rounded-lg border-2 transition-all text-left ${
                   selectedType === type.id
@@ -391,9 +398,25 @@ export function SubmitWaste() {
         </div>
 
         {/* Submit Button */}
+        {!image && (
+          <p className="text-sm text-amber-600 text-center">📷 Please upload a photo of your waste for AI verification.</p>
+        )}
+        {image && !verificationResult && (
+          <p className="text-sm text-amber-600 text-center">⚠️ Please verify your image with AI before submitting.</p>
+        )}
+        {verificationResult && (!verificationResult.isWaste || !verificationResult.correctType) && (
+          <p className="text-sm text-red-500 text-center">❌ AI verification did not pass. Fix issues above before submitting.</p>
+        )}
         <button
           type="submit"
-          disabled={!selectedType || !itemCount}
+          disabled={
+            !selectedType ||
+            !itemCount ||
+            !image ||
+            !verificationResult ||
+            !verificationResult.isWaste ||
+            !verificationResult.correctType
+          }
           className="w-full bg-primary text-primary-foreground py-4 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           <Upload className="w-5 h-5" />
