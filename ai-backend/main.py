@@ -6,7 +6,7 @@ from PIL import Image
 import os
 import uvicorn
 
-app = FastAPI(title="Waste Classification API")
+app = FastAPI()
 
 # Allow requests from the React frontend
 app.add_middleware(
