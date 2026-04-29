@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # Load the YOLOv8 model
-MODEL_PATH = "best.pt"
+MODEL_PATH = "yolov8n.pt"
 
 try:
     if not os.path.exists(MODEL_PATH) or os.path.getsize(MODEL_PATH) == 0:
