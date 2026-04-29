@@ -17,7 +17,7 @@ export const ForgotPassword: React.FC = () => {
 
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: 'http://localhost:5173/reset-password',
+        redirectTo: 'https://smart-waste-bank.vercel.app/forgot-password',
       });
 
       if (error) {
